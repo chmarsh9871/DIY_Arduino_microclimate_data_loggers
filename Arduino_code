@@ -1,0 +1,358 @@
+* 1.0 INTRODUCTION
+ *  
+  This code was written for a custom microclimate data logger for the Earth Systems Ecology Lab at the University
+  of New Mexico. It records data from an SHT40 Temperature and Humidity sensor, a BH1750 Light sensor, a
+  Seesaw Soil Capacitance Moisture and Temperature sensor, and records those data to a SD card with a time stamp
+  generated from a PCF8523 real-time clock. The data are saved to a text file named "DL_001.txt" (which can be changed
+  with 'FIND' and 'REPLACE' functions), with each set of data points saved as a single new line of text to minimize data
+  storage requirements. The NAME_AND_LOCATION fields below are intended to be changed for each microclimate data
+  logger when this code is uploaded, and detail the field site, the datalogger number, and it's GPS coordinates 
+  (as recorded by a Emlid RTK GNSS receiver). This information will then be displayed as header at the top of the .txt 
+  file.
+    
+  Timing of recordings can be changed via the 'int number_of_sleeper_loops = ...'  and  'int sleep_loop_length = ....' 
+  variables at the top of this text file. With a data point recorded every 30 minutes, and a fully charge 2500mAh 
+  battery, each data logger should record data for ~8 months. 
+
+  Using the Serial Monitor, the sensor and battery status for each logger can be checked at the time of deployment. 
+
+// 1.1 HARDWARE
+ 
+  Adafruit 32u4 Adalogger > soldered to
+  SparkFun Qwicc/Stemma QT FeatherWing > using raised headers, connected by QT cables to
+  -
+     Adafruit Sensirion SHT40 Temperature and Humidty Sensor - Stemma QT/ Qwiic,
+     Adafruit BH1750 Light Sensor - Stemma QT/ Qwiic,
+     Adafruit STEMMA Soil Sensor - 12C Capacitive Moisture Sensor,
+     Adafruit PCF8523 RTC Breakout Board,
+
+  128mb SD card (> Adalogger) 
+  Lithium Ion Polymer Battery - 3.7v 2500mAh (> Adalogger)
+  Lithium Cell Coin battery CR1220 - 3v (> RTC)
+
+// 1.2 HARDWARE LINKS and PRICING 
+  (as of January 2023) 
+
+  Adafruit Feather 32u4 Adalogger ($21.95)
+  https://www.adafruit.com/product/2795
+
+  SparkFun Qwiic Shield for Thing Plus ($4.95)
+  https://www.sparkfun.com/products/16790
+
+  Adafruit Sensirion SHT40 Temperature & Humidity Sensor - STEMMA QT / Qwiic ($5.95)
+  https://www.adafruit.com/product/4885?gclid=CjwKCAiAkrWdBhBkEiwAZ9cdcPXZdqQ6BiToAs5Hxw6Twjmj4HPcZoXobB0G69lyVyujA0MqFG8htxoCHxUQAvD_BwE
+  
+  Adafruit BH1750 Light Sensor - STEMMA QT / Qwiic ($4.50)
+  https://www.adafruit.com/product/4681
+
+  Adafruit STEMMA Soil Sensor - I2C Capacitive Moisture Sensor - JST PH 2mm ($7.50)
+  https://www.adafruit.com/product/4026?gclid=CjwKCAiAkrWdBhBkEiwAZ9cdcF8atiw_zEm8KdHb4E2y1EyKbHa1_kvRoKU3CLYx0L5e_qJMFgf5LxoCq_4QAvD_BwE
+
+  Adafruit PCF8523 Real Time Clock Breakout Board - STEMMA QT / Qwiic ($4.95)
+  https://www.adafruit.com/product/5189
+
+  QT Cable ($0.95, x 4)
+  https://www.adafruit.com/product/4210
+
+  Lithium Ion Polymer Battery - 3.7v 2500mAh ($14.95)
+  https://www.digikey.com/en/products/detail/adafruit-industries-llc/328/5054542
+
+  Lithium Cell Coin battery CR1220 - 3v ($0.35)
+  https://cheap-batteries.com/collections/cr1220/products/maxell-cr1220-3-0-volt-lithium-coin-battery-on-tear-strip-exp-6-19
+
+
+  Total (not inc. p&p)
+  -----
+  $68.90 
+ 
+  by Chris Marsh, UNM, 2023
+
+/*  
+ *   
+ */
+
+//CODE
+
+
+//NAME_AND_LOCATION
+String Site = "Philmont";
+String Logger_no = "74_redeployed_May_24";
+float Lat  = 0.000000;
+float Long = 0.000000;
+
+
+//LOGGING_INTERVAL
+int number_of_sleeper_loops = 450;  // this * 8 Seconds in powerDown
+
+// for a data point every minute,  number_of_sleeper_loops =   7
+// for a data point every 5 mins,  number_of_sleeper_loops =  37
+// for a data point every 10 mins, number_of_sleeper_loops =  75
+// for a data point every 15 mins, number_of_sleeper_loops = 112
+// for a data point every 30 mins, number_of_sleeper_loops = 225
+// for a data point every 60 mins, number_of_sleeper_loops = 450
+
+#include "LowPower.h"
+#include "Wire.h"
+#include "BH1750.h"
+#include "SHTSensor.h"
+#include "SPI.h"
+#include "SD.h"
+#include "Adafruit_seesaw.h"
+#include "RTClib.h"
+
+#define POWER A3
+#define VBATPIN A9
+int i;
+const int chipSelect = 4;
+
+BH1750 lightMeter;
+SHTSensor sht;
+Adafruit_seesaw ss;
+RTC_PCF8523 rtc;
+File myFile;
+
+void dateTime(uint16_t* date, uint16_t* time) {
+  DateTime now = rtc.now();
+
+  // return date using FAT_DATE macro to format fields
+  *date = FAT_DATE(now.year(), now.month(), now.day());
+
+  // return time using FAT_TIME macro to format fields
+  *time = FAT_TIME(now.hour(), now.minute(), now.second());
+}
+
+void setup() {
+
+  // power up clock chip
+  digitalWrite (POWER, HIGH);
+  pinMode (POWER, OUTPUT);
+
+  // activate I2C
+  Wire.begin();
+
+  digitalWrite (SDA, HIGH);
+  pinMode(SDA, OUTPUT);
+  digitalWrite (2, HIGH);
+  digitalWrite(SCL, HIGH);
+  pinMode(SCL, OUTPUT);
+  digitalWrite (3, HIGH);
+
+  Wire.begin();
+  Serial.begin(9600);
+  while (!Serial); // wait for serial port to connect. Needed for native USB
+  if (! rtc.begin()) {
+    Serial.println("Couldn't find RTC");
+    Serial.flush();
+  } else {
+    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+    DateTime now = rtc.now( );
+    char time_format[] = "hh:mm:ss_AP";
+    char date_format[] = "MM_DD_YYYY";
+    float measuredvbat_ = analogRead(VBATPIN);
+    measuredvbat_ *= 2;    // we divided by 2, so multiply back
+    measuredvbat_ *= 3.3;  // Multiply by 3.3V, our reference voltage
+    measuredvbat_ /= 1024; // convert to voltage
+    float percent_ = ((measuredvbat_ * 100) - 320);
+    //
+    lightMeter.begin(0x23);
+    lightMeter.setMTreg(32); // for high light enviroment, deafult is 69
+    ss.begin(0x36);
+    sht.init();
+    //
+    float lux_ = lightMeter.readLightLevel();
+    float tempC_ = ss.getTemp();
+    uint16_t capread_ = ss.touchRead(0);
+    // print sensor readings
+    if (sht.readSample()) {
+      Serial.println("-------------------------------------------------------");
+      Serial.print("Site Name: ");
+      Serial.print(Site );
+      Serial.print(" Logger No.: ");
+      Serial.print(Logger_no );
+      Serial.print(" Lat: ");
+      Serial.print(Lat, 7 );
+      Serial.print(" Long: ");
+      Serial.println(Long, 7 );
+      Serial.println("Setup: Sensors...");
+      Serial.println("   Time     /    Date    / Vbat /  Bat  / ATemp /  rH   /  Lux  / STmp /   SM   ");
+      Serial.print(now.toString(time_format));
+      Serial.print(" / ");
+      Serial.print(now.toString(date_format));
+      Serial.print(" / ");
+      Serial.print(measuredvbat_);
+      Serial.print(" / ");
+      Serial.print(percent_, 2);
+      Serial.print(" / ");
+      Serial.print(sht.getTemperature(), 2);
+      Serial.print(" / ");
+      Serial.print(sht.getHumidity(), 2);
+      Serial.print(" / ");
+      Serial.print(lux_);
+      Serial.print(" / ");
+      Serial.print(tempC_);
+      Serial.print(" / ");
+      Serial.print(capread_);
+      Serial.println();
+    } else {
+      Serial.print("Something has gone wrong with one of the sensors. Fiddle sticks");
+    }
+    if (!SD.begin(4)) {
+      Serial.println("SD card initialization failed! Are you sure its plugged in?");
+      while (1);
+    }
+  
+    myFile = SD.open("DL_001.txt", FILE_WRITE);
+
+    // if the file opened okay, write to it:
+    if (myFile) {
+      Serial.print("Setup: writing to file DL_001.txt...");
+      myFile.println("-------------------------------------------------------");
+      myFile.print("Site Name: ");
+      myFile.print(Site );
+      myFile.print(" Logger No.: ");
+      myFile.print(Logger_no );
+      myFile.print(" Lat: ");
+      myFile.print(Lat, 7 );
+      myFile.print(" Long: ");
+      myFile.println(Long, 7 );
+      myFile.println("   Time     /    Date    / Vbat /  Bat  / ATemp /  rH   /  Lux  / STmp /   SM   ");
+      myFile.print(now.toString(time_format));
+      myFile.print(" / ");
+      myFile.print(now.toString(date_format));
+      myFile.print(" / ");
+      myFile.print(measuredvbat_);
+      myFile.print(" / ");
+      myFile.print(percent_, 2);
+      myFile.print(" / ");
+      myFile.print(sht.getTemperature(), 2);
+      myFile.print(" / ");
+      myFile.print(sht.getHumidity(), 2);
+      myFile.print(" / ");
+      myFile.print(lux_);
+      myFile.print(" / ");
+      myFile.print(tempC_);
+      myFile.print(" / ");
+      myFile.print(capread_);
+      myFile.println();
+      Serial.print("OK");
+      // close the file:
+      myFile.close();
+    } else {
+      // if the file didn't open, print an error:
+      Serial.println("Error opening DL_001.txt");
+    }
+    // open the file. note that only one file can be open at a time,
+    // so you have to close this one before opening another.
+    myFile = SD.open("DL_001.txt", FILE_WRITE);
+
+    // re-open the file for reading:
+    myFile = SD.open("DL_001.txt", FILE_WRITE);
+    if (myFile) {
+      Serial.println("Setup: reading file DL_001.txt. OK");
+
+      // Disable digital input.
+    DIDR0 |= _BV(ADC7D) | _BV(ADC6D) | _BV(ADC5D) | _BV(ADC4D) | _BV(ADC1D) | _BV(ADC0D);
+    DIDR1 |= _BV(AIN0D);
+    DIDR2 |= _BV(ADC13D) | _BV(ADC12D) | _BV(ADC11D) | _BV(ADC10D) | _BV(ADC9D) | _BV(ADC8D);
+    // Disable ADC
+    ADCSRA &= ~(_BV(ADEN));
+    // Disable analog comparator and it's interrupts
+    ACSR = (ACSR & ~_BV(ACIE)) | _BV(ACD);
+
+    USBCON |= (1 << FRZCLK);             // Freeze the USB Clock              
+    PLLCSR &= ~(1 << PLLE);              // Disable the USB Clock (PPL) 
+    USBCON &= ~(1 << USBE  );           // Disable the USB  
+    ADCSRA &= ~(1<<ADEN);
+
+    }
+  }
+}
+void loop() {
+
+  // power up clock chip
+  digitalWrite (POWER, HIGH);
+  pinMode (POWER, OUTPUT);
+
+  // activate I2C
+  Wire.begin();
+  digitalWrite (SDA, HIGH);
+  pinMode(SDA, OUTPUT);
+  digitalWrite(SCL, HIGH);
+  pinMode(SCL, OUTPUT);
+
+  rtc.begin();
+  lightMeter.begin(0x23);
+  lightMeter.setMTreg(32); // for high light enviroment, deafult is 69
+  ss.begin(0x36);
+  sht.init();
+  SD.begin(4);
+  Serial.begin(9600);
+
+  while (!Serial) {};
+  if (!SD.begin(4)) {
+    Serial.println("SD card initialization failed!");
+    while (1);
+  }
+  myFile = SD.open("DL_001.txt", FILE_WRITE);
+
+  if (myFile) {
+    // close the file:
+    myFile.close();
+  } else {
+    // if the file didn't open, print an error:
+    Serial.println("Error opening DL_001.txt");
+  }
+
+  DateTime now = rtc.now(); //Get the time
+
+  char time_format[] = "hh:mm:ss_AP";
+  char date_format[] = "MM_DD_YYYY";
+
+  float lux = lightMeter.readLightLevel();
+  float tempC = ss.getTemp();
+  uint16_t capread = ss.touchRead(0);
+  float measuredvbat = analogRead(VBATPIN);
+  measuredvbat *= 2;    // we divided by 2, so multiply back
+  measuredvbat *= 3.3;  // Multiply by 3.3V, our reference voltage
+  measuredvbat /= 1024; // convert to voltage
+  float percent = ((measuredvbat * 100) - 320);
+  //
+  SdFile::dateTimeCallback(dateTime);
+  File dataFile = SD.open("DL_001.txt", FILE_WRITE);
+  // put your main code here, to run repeatedly:
+  // read from first sensor
+  if (sht.readSample()) {
+    dataFile.print(now.toString(time_format));
+    dataFile.print(" / ");
+    dataFile.print(now.toString(date_format));
+    dataFile.print(" / ");
+    dataFile.print(measuredvbat);
+    dataFile.print(" / ");
+    dataFile.print(percent, 2);
+    dataFile.print(" / ");
+    dataFile.print(sht.getTemperature(), 2);
+    dataFile.print(" / ");
+    dataFile.print(sht.getHumidity(), 2);
+    dataFile.print(" / ");
+    dataFile.print(lux);
+    dataFile.print(" / ");
+    dataFile.print(tempC);
+    dataFile.print(" / ");
+    dataFile.print(capread);
+    dataFile.println();
+    dataFile.close();
+  }
+  // turn off I2C
+  TWCR &= ~(bit(TWEN) | bit(TWIE) | bit(TWEA));
+
+  // turn off I2C pull-ups
+  digitalWrite (SDA, LOW);
+  digitalWrite(SCL, LOW);
+  pinMode (POWER, INPUT);
+  digitalWrite (POWER, LOW);
+
+  for (int i = 0; i < number_of_sleeper_loops; i++) {
+    LowPower.powerDown(SLEEP_8S, ADC_OFF, BOD_OFF);
+    }
+    
+}
