@@ -1,0 +1,431 @@
+install.packages("plotly")
+install.packages("gapminder")
+install.packages("patchwork")
+#install.packages("wesanderson")
+#library(wesanderson)
+library(plotly)
+library(gapminder)
+library(readxl)
+library(tidyverse)
+library(lubridate)
+library(dplyr)
+library(ggplot2)
+library(ggplot2)
+library(dplyr)
+library(patchwork)
+library(hrbrthemes)
+
+A <- read.csv("~/Documents/PDL.csv")
+View(A)
+summary(A)
+
+#change col names to something sensible 
+A <- rename(A, rH = rH...)
+A <- rename(A, SM = SM.cc.)
+
+A <- mutate(A, rH = ifelse(rH >= 100, 100, rH))
+
+A <- A %>% mutate(Date = as.Date(Date, format = "%m_%d_%y"))
+parse_date_time(A$Time, '%I:%M:%S %p')
+A <- drop_na(A)
+A$DateTime <- paste(A$Date, A$Time)
+
+parse_date_time(A$Time, '%I:%M:%S %p')
+A$DateTime <- as.POSIXct(A$DateTime,  c("%Y-%m-%d %I:%M:%S_%p"), tz = "HST")
+A$DateTime1 <- lubridate::round_date(A$DateTime, "15 minutes")
+
+ggplot(A, aes(DateTime1, ATemp), group = Sheet, color = Sheet)+
+  geom_point()
+
+A <- dplyr::filter(A, n >= 500)
+
+data.frame(colnames(A))
+
+aggregate(A$ATemp, list(A$Number), FUN=mean)
+
+unique(A$Number)
+
+A <- dplyr::filter(A, DateTime >= "2020-09-17 06:00:00 HST" & DateTime <= "2020-10-31 06:00:00 HST" )
+A$Letter = str_sub(A$Sheet, 0, 1)
+A$Number = str_sub(A$Sheet, -1)
+
+A_A <- dplyr::filter(A, SM <= 2000)
+
+A_A <- A %>% 
+  group_by(DateTime1, Letter) %>%
+  mutate(ATEMP = mean(ATemp)) %>%
+  mutate(RH = mean(rH)) %>%
+  mutate(LUX = mean(Lux)) %>%
+  mutate(STMP = mean(STmp)) %>%
+  mutate(SMoist = mean(SM))
+
+aggregate(A_A$ATEMP, list(A_A$Number), FUN=mean)
+
+data.frame(colnames(A_A))
+
+AB <- A_A[-c(1:4,6:14,17)]
+
+data.frame(colnames(AB))
+write.csv(AB, "~/Documents/AB.csv")               
+               
+gc()
+View(A_A)
+AB <- read.csv("~/Documents/AB2.csv")
+
+AB <- dplyr::filter(AB, SMoist <= 2000)
+
+AB1 <- AB  %>% mutate(Date = as.Date(Date, format = "%m/%d/%y"))
+
+aggregate(AB1$SMoist, list(AB1$Number), FUN=mean)
+
+#####
+
+h1 <- ggplot(AB1, aes( x = Date, y = ATEMP, group = Number, color =Number))+
+  geom_jitter(alpha = 0.0075)+
+geom_smooth(method = "gam", se = F,alpha = 0.25)
+#geom_line(alpha = 0.4)
+h1 <- h1+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+h2 <- ggplot(AB1, aes( x = Date, y = RH, group = Number, color =Number))+
+  geom_jitter(alpha = 0.0075)+
+  geom_smooth(method = "gam", se = F, alpha = 0.25)
+#geom_smooth(method = "lm", se= FALSE)
+h2 <- h2+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+h3 <- ggplot(AB1, aes( x = Date, y = LUX, group = Number, color =Number))+
+  geom_jitter(alpha = 0.0075)+
+geom_smooth(method = "lm", se = F,alpha = 0.25)
+ h3 <- h3+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+h4 <- ggplot(AB1, aes( x = Date, y = STMP, group = Number, color =Number))+
+  geom_jitter(alpha = 0.005)+
+  geom_smooth(method = "gam", se = F,alpha = 0.25)
+#geom_smooth(method = "lm", se = FALSE)
+h4 <- h4+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+h5 <- ggplot(AB1, aes( x = Date, y = SMoist, group = Number, color =Number))+
+  #geom_jitter(alpha = 0.0075)+
+  #geom_smooth(method = "gam", se = F, alpha = 0.25)
+geom_line(alpha = 0.4)
+#geom_smooth(aes(x = as.Date(x = datetime1, y = SM), method = "loess", se= FALSE, span = 0.25))
+h5 <-h5+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+h1 <- h1 + theme(legend.position="none", axis.text.x=element_blank(), axis.ticks.x=element_blank())
+h2 <- h2 + theme(legend.position="none",axis.text.x=element_blank(),axis.ticks.x=element_blank())
+h3 <- h3 + theme(legend.position="none", axis.text.x=element_blank(),axis.ticks.x=element_blank())
+h4 <- h4 + theme(legend.position="none", axis.text.x=element_blank(),axis.ticks.x=element_blank())
+h5 <- h5 
+
+h1/h2/h3/h4/h5
+
+
+h <- ggplot(AB, aes(DateTime1, SM, group = Number, color = Number))
+h7 <- h + geom_jitter( size = 1, alpha = 0.3)+geom_smooth(method = "gam", se = F, alpha = 0.1)+ylim(300,2000)+
+  theme(legend.position="none")
+
+
+
+
+  #labs(title = "Soil Moisture")
+
+h <- ggplot(A, aes( x = DateTime, y = SM, group = Letter, color = Letter))+
+  geom_line(alpha = 0.25)+
+  #geom_line(alpha = 0.4)
+  geom_smooth(aes(x = DateTime, y = SM, method = "gam", se= FALSE, span = 0.25))
+h+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  labs(title = "Soil Moisture")
+
+h <- ggplot(P1, aes( x = as.Date(datetime1), y = SM, group = Sheet, color = Sheet))+
+  #geom_jitter(alpha = 0.05)+
+  #geom_line(alpha = 0.4)
+  geom_smooth(method = "gam", se= FALSE, span = 0.1)
+h+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  labs(title = "Soil Moisture")
+
+h5 <- ggplot(P1, aes( x = Date, y = SM, group = Letter, color = Letter))+
+  #geom_jitter(alpha = 0.05)+
+  #geom_line(alpha = 0.4)
+  geom_smooth(method = "gam", se= FALSE, span = 0.1)
+h5 <- h5+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  labs(title = "Soil Moisture")
+
+
+h1/h2/h3/h4/h5
+
+
++theme(legend.position="none")
+p2 <- h1+ theme(axis.text.x=element_blank())+
+  labs(title = "rH")+scale_x_date(date_breaks  ="1 day")
+
+h1 <- h1 + theme(legend.position="none", axis.text.x=element_blank(), axis.ticks.x=element_blank(),axis.title = element_blank())+
+  labs(title = "Air Temperature oC")
+
+h2 <- h2 + theme(legend.position="none",axis.text.x=element_blank(),axis.ticks.x=element_blank(),(axis.title = element_blank())+labs(title = "rH %"))
+h3 <- h3 + theme(legend.position="none", axis.text.x=element_blank(),axis.ticks.x=element_blank(),axis.title = element_blank())+labs(title = "Lux")
+h4 <- h4 + theme(legend.position="none", axis.text.x=element_blank(),axis.ticks.x=element_blank(),axis.title = element_blank())+
+  labs(title = "Soil Temperature")
+h5 <- h5 + theme(legend.position="none")+labs(title = "Soil Moisture")
+h1/h2/h3/h4/h5
+
+
+
+#####-----------------------------------
+
+
+h1 <- ggplot(A, aes( x = DateTime1, y = ATemp, group = Sheet, color = Sheet))+
+  geom_line(alpha = 0.15)+
+  geom_smooth(method = "gam", se = F,alpha = 0.25)
+
+h2 <- ggplot(A, aes( x = DateTime1, y = rH, group = Sheet, color = Sheet))+
+  geom_line(alpha = 0.15)+
+  geom_smooth(method = "gam", se = F, alpha = 0.25)
+
+h3 <- ggplot(A, aes( x = DateTime1, y = Lux, group = Sheet, color = Sheet))+
+  geom_line(alpha = 0.15)+
+  geom_smooth(method = "lm", se = F,alpha = 0.25)
+
+h4 <- ggplot(A, aes( x = DateTime1, y = STmp, group = Sheet, color = Sheet))+
+  geom_line(alpha = 0.15)+
+  geom_smooth(method = "gam", se = F, alpha = 0.25 )
+
+h5 <- ggplot(A, aes( x = DateTime1, y = SM, group = Sheet, color = Sheet))+
+  geom_line(alpha = 0.7)
+#+
+  geom_smooth(method = "gam", se = F, alpha = 0.25)
+
+Aa <- dplyr::filter(A, DateTime >= "2020-09-16 06:00:00 HST" & DateTime <= "2020-09-31 06:00:00 HST" )
+
+h2 <-A %>%
+  mutate(day = as.Date(Date),
+         Letter = as.factor(Letter),
+         Number = as.factor(Number)) %>%
+  dplyr::group_by(Letter, Number, Date) %>%
+  summarize(Lux.cv = sd(Lux, na.rm = T)/mean(Lux, na.rm = T),
+            ATemp.cv = sd(ATemp, na.rm = T)/mean(ATemp,na.rm = T),
+            rH.cv= sd(rH, na.rm = T)/mean(rH, na.rm = T),
+            STmp.cv = sd(STmp, na.rm = T)/mean(STmp, na.rm = T),
+            SM.cv = sd(SM, na.rm = T)/mean(SM, na.rm = T))%>%
+   #summarize(Lux.mean = mean(Lux, na.rm = T),
+            #ATemp.mean = mean(ATemp, na.rm = T),
+            #rH.mean = mean(rH,na.rm = T),
+            #STmp.mean = mean(STmp, na.rm = T),
+            #SM.mean = mean(SM, nam.rm = T))%>%
+  #summarize(Lux.max = max(Lux, na.rm = T),
+            #ATemp.max = max(ATemp, na.rm = T),
+            #rH.max = max(rH,na.rm = T),
+            #STmp.max = max(STmp, na.rm = T),
+            #SM.max = max(SM, nam.rm = T))%>%
+  #summarize(Lux.min = min(Lux, na.rm = T),
+            #ATemp.min = min(ATemp, na.rm = T),
+            #rH.min = min(rH,na.rm = T),
+            #STmp.min = min(STmp, na.rm = T),
+            #SM.min = min(SM, nam.rm = T))%>%
+  ungroup() %>%
+  ggplot() + geom_point(aes(Number, Letter, color = SM.cv), size = 6, shape = 15) +
+  scale_x_discrete(limits = rev) + facet_wrap(~Date)
+ggplotly(h2)
+
+
+p <- A %>%
+  mutate(day = as.Date(Date),
+         Letter = as.factor(Letter),
+         Number = as.factor(Number)) %>%
+  dplyr::group_by(Letter, Number, Date) %>%
+  #summarize(Lux.cv = sd(Lux, na.rm = T)/mean(Lux, na.rm = T),
+  #ATemp.cv = sd(ATemp, na.rm = T)/mean(ATemp,na.rm = T),
+  #rH.cv= sd(rH, na.rm = T)/mean(rH, na.rm = T),
+  #STmp.cv = sd(STmp, na.rm = T)/mean(STmp, na.rm = T),
+  #SM.cv = sd(SM, na.rm = T)/mean(SM, na.rm = T))%>%
+  #summarize(Lux.mean = mean(Lux, na.rm = T),
+  #ATemp.mean = mean(ATemp, na.rm = T),
+  #rH.mean = mean(rH,na.rm = T),
+  #STmp.mean = mean(STmp, na.rm = T),
+  #SM.mean = mean(SM, nam.rm = T))%>%
+  summarize(Lux.max = max(Lux, na.rm = T),
+  ATemp.max = max(ATemp, na.rm = T),
+  rH.max = max(rH,na.rm = T),
+  STmp.max = max(STmp, na.rm = T),
+  SM.max = max(SM, nam.rm = T))%>%
+  #summarize(Lux.min = min(Lux, na.rm = T),
+#ATemp.min = min(ATemp, na.rm = T),
+#rH.min = min(rH,na.rm = T),
+#STmp.min = min(STmp, na.rm = T),
+#SM.min = min(SM, nam.rm = T))%>%
+ungroup() %>%
+  ggplot() + geom_point(aes(Number, Letter, color = SM.max), size = 6, shape = 15) +
+  scale_x_discrete(limits = rev) + facet_wrap(~Date)
+ggplotly(p)
+
+p <- A_A %>%
+  mutate(day = as.Date(Date),
+         Letter = as.factor(Letter)) %>%
+         #Number = as.factor(Number)) %>%
+  dplyr::group_by(Letter, Date) %>%
+  #summarize(Lux.cv = sd(Lux, na.rm = T)/mean(Lux, na.rm = T),
+  #ATemp.cv = sd(ATemp, na.rm = T)/mean(ATemp,na.rm = T),
+  #rH.cv= sd(rH, na.rm = T)/mean(rH, na.rm = T),
+  #STmp.cv = sd(STmp, na.rm = T)/mean(STmp, na.rm = T),
+  #SM.cv = sd(SM, na.rm = T)/mean(SM, na.rm = T))%>%
+  summarize(Lux.mean = mean(Lux, na.rm = T),
+  ATemp.mean = mean(ATemp, na.rm = T),
+  rH.mean = mean(rH,na.rm = T),
+  STmp.mean = mean(STmp, na.rm = T),
+  SM.mean = mean(SM, nam.rm = T))%>%
+  #summarize(Lux.max = max(Lux, na.rm = T),
+  #ATemp.max = max(ATemp, na.rm = T),
+  #rH.max = max(rH,na.rm = T),
+  #STmp.max = max(STmp, na.rm = T),
+  #SM.max = max(SM, nam.rm = T))%>%
+  #summarize(Lux.min = min(Lux, na.rm = T),
+  #ATemp.min = min(ATemp, na.rm = T),
+  #rH.min = min(rH,na.rm = T),
+  #STmp.min = min(STmp, na.rm = T),
+  #SM.min = min(SM, nam.rm = T))%>%
+  ungroup() %>%
+  ggplot() + geom_point(aes(Letter, color = SM.mean), size = 6, shape = 15) +
+  scale_x_discrete(limits = rev) + facet_wrap(~Date)
+ggplotly(p)
+
+
+summary(As)
+View(As)
+
+unique(A$Sheet)
+
+As <- day = day(DateTime),
+  arrange(A,Sheet,Date) %>%
+  group_by(Sheet) %>%
+  summarize(ATemp_mean = mean(ATemp, na.rm = T),
+            ATemp_max  = last(ATemp, na.rm = T), 
+            ATemp_min = first(ATemp, na.rm = T), day)
+            #rH_mean = mean(rH, na.rm = T), 
+            #rH_max  = last(rH, na.rm = T),
+            #rH_min = first(rH, na.rm = T),
+            #Lux_mean = mean(Lux, na.rm = T),
+            #Lux_max  = last(Lux, na.rm = T),
+            #Lux_min = first(Lux, na.rm = T),
+            #STmp_mean = mean(STmp, na.rm = T),
+            #STmp_max  = last(STmp, na.rm = T),
+            #STmp_min = first(STmp, na.rm = T),
+            #SM_mean = mean(SM, na.rm = T),
+            #SM_max  = last(SM, na.rm = T),
+            #SM_min = first(SM, na.rm = T)) 
+            %>% ungroup() %>%
+    ggplot() + geom_ribbon(aes(ymin=Atemp_min, ymax=Atemp_max), alpha = 0.05, stat = "identity", 
+                           linetype = 3)+
+    geom_line(aes(y = ATemp_mean), size = 1, alpha = 0.75)+scale_x_discrete(limits = rev) + facet_wrap(~day)
+    
+    scale_x_discrete(limits = rev) + facet_wrap(~day)
+  
+As <- A %>%
+      group_by(Date, Sheet) %>%
+      summarise(ATemp_mean = mean(ATemp, na.rm = T),
+                ATemp_max  = max(ATemp, na.rm = T), 
+                ATemp_min =  min(ATemp, na.rm = T),
+                rH_mean = mean(rH, na.rm = T), 
+                rH_max  = max(rH, na.rm = T),
+                rH_min = min(rH, na.rm = T),
+                Lux_mean = mean(Lux, na.rm = T),
+                Lux_max  = max(Lux, na.rm = T),
+                Lux_min = min(Lux, na.rm = T),
+                STmp_mean = mean(STmp, na.rm = T),
+                STmp_max  = max(STmp, na.rm = T),
+                STmp_min = min(STmp, na.rm = T),
+                SM_mean = mean(SM, na.rm = T),
+                SM_max  = max(SM, na.rm = T),
+                SM_min = min(SM, na.rm = T))
+
+
+h <- ggplot(As, aes(Date, group = Sheet, color = Sheet))
+
+h1 <- h + geom_ribbon(aes(ymin=ATemp_min, ymax=ATemp_max), alpha = 0.05, stat = "identity", 
+                      linetype = 3)+
+  geom_line(aes(y = ATemp_mean), size = 1, alpha = 0.75)
+p1 <- h1+ theme(axis.text.x=element_blank())+
+  labs(title = "temp")+scale_x_date(date_breaks  ="1 day")
+p1
+ggplotly(p1)
+
+h1 <- h + geom_ribbon(aes(ymin=rH_min, ymax=rH_max), alpha = 0.05, stat = "identity", 
+                      linetype = 3)+
+  geom_line(aes(y = rH_mean), size = 1, alpha = 0.75)+theme(legend.position="none")
+p2 <- h1+ theme(axis.text.x=element_blank())+
+  labs(title = "rH")+scale_x_date(date_breaks  ="1 day")
+p2
+ggplotly(p2)
+
+h1 <- h + geom_ribbon(aes(ymin=Lux_min, ymax=Lux_max), alpha = 0.05, stat = "identity", 
+                      linetype = 3)+
+  geom_line(aes(y = Lux_mean), size = 1, alpha = 0.75)+theme(legend.position="none")
+p3 <- h1+ theme(axis.text.x=element_blank())+
+  labs(title = "Lux")+scale_x_date(date_breaks  ="1 day")
+ggplotly(p3)
+
+h1 <- h + geom_ribbon(aes(ymin=STmp_min, ymax=STmp_max), alpha = 0.05, stat = "identity", 
+                      linetype = 3)+
+  geom_line(aes(y = STmp_mean), size = 1, alpha = 0.75)+theme(legend.position="none")
+p4 <- h1+ theme(axis.text.x=element_blank())+
+  labs(title = "STmp")+scale_x_date(date_breaks  ="1 day")
+p4
+ggplotly(p4)
+
+h1 <- h + geom_ribbon(aes(ymin=SM_min, ymax=SM_max), alpha = 0.05, stat = "identity", 
+                      linetype = 3)+
+  geom_line(aes(y = SM_mean), size = 1, alpha = 0.75)+
+  theme(legend.position="none")
+p5 <- h1+ theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))+
+  labs(title = "Soil Moisture")+scale_x_date(date_breaks  ="1 day")
+p5
+
+p1/p2/p3/p4/p5
+
+ggplotly(p5)
+
+##----
+
+coldestDay <- "2020-10-05"
+warmestDay <- "2020-09-27"
+
+
+AC <- dplyr::filter(A, Date == coldestDay)
+AW <- dplyr::filter(A, Date == warmestDay)
+AC <- drop_na(AC)
+AW <- drop_na(AW)
+AC <- dplyr::filter(AC, SM <= 2000)
+AW <- dplyr::filter(AW, SM <= 2000)
+summary(AW)
+
+h <- ggplot(AW, aes(DateTime1,ATemp, group = Sheet, color = Sheet))
+h1 <- h + geom_jitter( size = 1, alpha = 0.3)+geom_smooth(method = "gam", se = F, alpha = 0.15)+ylim(-1,50)+
+  theme(legend.position="none")
+
+h <- ggplot(AC, aes(DateTime1,ATemp, group = Sheet, color = Sheet))
+h2 <- h + geom_jitter( size = 1, alpha = 0.3)+geom_smooth(method = "gam", se = F, alpha = 0.15)+ylim(-1,50)+
+  theme(legend.position="none")
+
+h <- ggplot(AW, aes(DateTime1,rH, group = Sheet, color = Sheet))
+h3 <- h + geom_jitter( size = 1, alpha = 0.3)+ geom_smooth(method = "gam", se = F, alpha = 0.1)+ylim(20,110)+
+  theme(legend.position="none")
+
+h <- ggplot(AC, aes(DateTime1,rH, group = Sheet, color = Sheet))
+h4 <- h + geom_jitter( size = 1, alpha = 0.3)+ geom_smooth(method = "gam", se = F, alpha = 0.1)+ylim(20,110)+
+  theme(legend.position="none")
+
+h <- ggplot(AW, aes(DateTime1,STmp, group = Sheet, color = Sheet))
+h5 <- h + geom_jitter( size = 1, alpha = 0.3)+geom_smooth(method = "gam", se = F, alpha = 0.1)+ylim(-1,50)+
+theme(legend.position="none")
+
+h <- ggplot(AC, aes(DateTime1,STmp, group = Sheet, color = Sheet))
+h6 <- h + geom_jitter( size = 1, alpha = 0.3)+geom_smooth(method = "gam", se = F, alpha = 0.1)+ylim(-1,50)+
+  theme(legend.position="none")
+
+h <- ggplot(AW, aes(DateTime1, SM, group = Sheet, color = Sheet))
+h7 <- h + geom_jitter( size = 1, alpha = 0.3)+geom_smooth(method = "gam", se = F, alpha = 0.1)+ylim(300,2000)+
+  theme(legend.position="none")
+
+h <- ggplot(AC, aes(DateTime, SM, group = Sheet, color = Sheet))
+h8 <- h + geom_jitter( size = 1, alpha = 0.3)+geom_smooth(method = "gam", se = F, alpha = 0.1)+ylim(300,2000)+
+  theme(legend.position="none")
+
+h1/h2|h3/h4|h5/h6|h7/h8
+
